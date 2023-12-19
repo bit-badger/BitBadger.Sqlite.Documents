@@ -393,6 +393,13 @@ module WithConn =
             let! results = list query parameters mapFunc conn
             return List.tryHead results
         }
+        
+        /// Execute a query that does not return a value
+        let nonQuery query (parameters: SqliteParameter seq option) (conn: SqliteConnection) =
+            use cmd = conn.CreateCommand()
+            cmd.CommandText <- query
+            parameters |> Option.iter cmd.Parameters.AddRange
+            write cmd
 
         /// Execute a query that returns a scalar value
         let scalar<'T when 'T : struct> query (parameters: SqliteParameter seq option) (mapFunc: SqliteDataReader -> 'T)
@@ -537,6 +544,12 @@ module Custom =
         return! WithConn.Custom.single<'TDoc> query parameters mapFunc conn
     }
 
+    /// Execute a query that does not return a value
+    let nonQuery query parameters = backgroundTask {
+        use! conn = newDbConn ()
+        return! WithConn.Custom.nonQuery query parameters conn
+    }
+    
     /// Execute a query that returns a scalar value
     let scalar<'T when 'T : struct> query parameters (mapFunc: SqliteDataReader -> 'T) = backgroundTask {
         use! conn = newDbConn ()

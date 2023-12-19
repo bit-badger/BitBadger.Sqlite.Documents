@@ -572,6 +572,28 @@ let integrationTests =
                     Expect.isEmpty docs "There should have been no documents returned"
                 }
             ]
+            testList "nonQuery" [
+                testTask "succeeds when operating on data" {
+                    use! db = Db.buildDb ()
+                    do! loadDocs ()
+
+                    do! Custom.nonQuery $"DELETE FROM {Db.tableName}" None
+
+                    let! remaining = Count.all Db.tableName
+                    Expect.equal remaining 0L "There should be no documents remaining in the table"
+                }
+                testTask "succeeds when no data matches where clause" {
+                    use! db = Db.buildDb ()
+                    do! loadDocs ()
+
+                    do! Custom.nonQuery
+                            $"DELETE FROM {Db.tableName} WHERE data ->> 'NumValue' > @value"
+                            (Some [ SqliteParameter("@value", 100) ])
+
+                    let! remaining = Count.all Db.tableName
+                    Expect.equal remaining 5L "There should be 5 documents remaining in the table"
+                }
+            ]
             testTask "scalar succeeds" {
                 use! db = Db.buildDb ()
         
