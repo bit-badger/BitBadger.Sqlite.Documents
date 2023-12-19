@@ -201,7 +201,7 @@ let integrationTests =
                     let! result =
                         Custom.scalar
                             "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE name = @name) AS it"
-                            (Some [ SqliteParameter("@name", name) ])
+                            [ SqliteParameter("@name", name) ]
                             _.GetInt64(0)
                     return result > 0
                 }
@@ -535,7 +535,7 @@ let integrationTests =
                     let! doc =
                         Custom.single
                             $"SELECT data FROM {Db.tableName} WHERE data ->> 'Id' = @id"
-                            (Some [ SqliteParameter("@id", "one") ])
+                            [ SqliteParameter("@id", "one") ]
                             fromData<JsonDocument>
                     Expect.isSome doc "There should have been a document returned"
                     Expect.equal doc.Value.Id "one" "The incorrect document was returned"
@@ -547,7 +547,7 @@ let integrationTests =
                     let! doc =
                         Custom.single
                             $"SELECT data FROM {Db.tableName} WHERE data ->> 'Id' = @id"
-                            (Some [ SqliteParameter("@id", "eighty") ])
+                            [ SqliteParameter("@id", "eighty") ]
                             fromData<JsonDocument>
                     Expect.isNone doc "There should not have been a document returned"
                 }
@@ -557,7 +557,7 @@ let integrationTests =
                     use! db = Db.buildDb ()
                     do! loadDocs ()
         
-                    let! docs = Custom.list (Query.selectFromTable Db.tableName) None fromData<JsonDocument>
+                    let! docs = Custom.list (Query.selectFromTable Db.tableName) [] fromData<JsonDocument>
                     Expect.hasCountOf docs 5u isTrue "There should have been 5 documents returned"
                 }
                 testTask "succeeds when data is not found" {
@@ -567,7 +567,7 @@ let integrationTests =
                     let! docs =
                         Custom.list
                             $"SELECT data FROM {Db.tableName} WHERE data ->> 'NumValue' > @value"
-                            (Some [ SqliteParameter("@value", 100) ])
+                            [ SqliteParameter("@value", 100) ]
                             fromData<JsonDocument>
                     Expect.isEmpty docs "There should have been no documents returned"
                 }
@@ -577,7 +577,7 @@ let integrationTests =
                     use! db = Db.buildDb ()
                     do! loadDocs ()
 
-                    do! Custom.nonQuery $"DELETE FROM {Db.tableName}" None
+                    do! Custom.nonQuery $"DELETE FROM {Db.tableName}" []
 
                     let! remaining = Count.all Db.tableName
                     Expect.equal remaining 0L "There should be no documents remaining in the table"
@@ -588,7 +588,7 @@ let integrationTests =
 
                     do! Custom.nonQuery
                             $"DELETE FROM {Db.tableName} WHERE data ->> 'NumValue' > @value"
-                            (Some [ SqliteParameter("@value", 100) ])
+                            [ SqliteParameter("@value", 100) ]
 
                     let! remaining = Count.all Db.tableName
                     Expect.equal remaining 5L "There should be 5 documents remaining in the table"
@@ -597,7 +597,7 @@ let integrationTests =
             testTask "scalar succeeds" {
                 use! db = Db.buildDb ()
         
-                let! nbr = Custom.scalar "SELECT 5 AS test_value" None _.GetInt32(0)
+                let! nbr = Custom.scalar "SELECT 5 AS test_value" [] _.GetInt32(0)
                 Expect.equal nbr 5 "The query should have returned the number 5"
             }
         ]

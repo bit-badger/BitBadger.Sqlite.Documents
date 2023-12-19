@@ -381,11 +381,11 @@ module WithConn =
     module Custom =
 
         /// Execute a query that returns a list of results
-        let list<'TDoc> query (parameters: SqliteParameter seq option) (mapFunc: SqliteDataReader -> 'TDoc)
+        let list<'TDoc> query (parameters: SqliteParameter seq) (mapFunc: SqliteDataReader -> 'TDoc)
                 (conn: SqliteConnection) =
             use cmd = conn.CreateCommand()
             cmd.CommandText <- query
-            parameters |> Option.iter cmd.Parameters.AddRange
+            cmd.Parameters.AddRange parameters
             toCustomList<'TDoc> cmd mapFunc
 
         /// Execute a query that returns one or no results
@@ -395,18 +395,18 @@ module WithConn =
         }
         
         /// Execute a query that does not return a value
-        let nonQuery query (parameters: SqliteParameter seq option) (conn: SqliteConnection) =
+        let nonQuery query (parameters: SqliteParameter seq) (conn: SqliteConnection) =
             use cmd = conn.CreateCommand()
             cmd.CommandText <- query
-            parameters |> Option.iter cmd.Parameters.AddRange
+            cmd.Parameters.AddRange parameters
             write cmd
 
         /// Execute a query that returns a scalar value
-        let scalar<'T when 'T : struct> query (parameters: SqliteParameter seq option) (mapFunc: SqliteDataReader -> 'T)
+        let scalar<'T when 'T : struct> query (parameters: SqliteParameter seq) (mapFunc: SqliteDataReader -> 'T)
                 (conn: SqliteConnection) = backgroundTask {
             use cmd = conn.CreateCommand()
             cmd.CommandText <- query
-            parameters |> Option.iter cmd.Parameters.AddRange
+            cmd.Parameters.AddRange parameters
             use! rdr = cmd.ExecuteReaderAsync()
             let! isFound = rdr.ReadAsync()
             return if isFound then mapFunc rdr else Unchecked.defaultof<'T>
