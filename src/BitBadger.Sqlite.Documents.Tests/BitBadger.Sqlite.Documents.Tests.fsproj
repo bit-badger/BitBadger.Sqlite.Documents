@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Db.fs" />
+    <Compile Include="FSharpTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Expecto" Version="10.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BitBadger.Sqlite.FSharp.Documents\BitBadger.Sqlite.FSharp.Documents.fsproj" />
+  </ItemGroup>
+
+</Project>
