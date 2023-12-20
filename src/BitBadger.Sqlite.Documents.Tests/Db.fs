@@ -5,6 +5,9 @@ open System.IO
 open System.Threading.Tasks
 open BitBadger.Sqlite.FSharp.Documents
 
+/// The table name for the catalog metadata
+let catalog = "sqlite_master"
+
 /// The name of the table used for testing
 let tableName = "test_table"
 

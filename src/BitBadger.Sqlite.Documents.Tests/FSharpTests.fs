@@ -17,9 +17,6 @@ type JsonDocument =
 
 let emptyDoc = { Id = ""; Value = ""; NumValue = 0; Sub = None }
 
-/// The table name for the catalog metadata
-let catalog = "sqlite_master"
-
 /// Tests which do not hit the database
 let unitTests =
     testList "Unit" [
@@ -200,7 +197,7 @@ let integrationTests =
                 let itExists (name: string) = task {
                     let! result =
                         Custom.scalar
-                            "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE name = @name) AS it"
+                            $"SELECT EXISTS (SELECT 1 FROM {Db.catalog} WHERE name = @name) AS it"
                             [ SqliteParameter("@name", name) ]
                             _.GetInt64(0)
                     return result > 0
