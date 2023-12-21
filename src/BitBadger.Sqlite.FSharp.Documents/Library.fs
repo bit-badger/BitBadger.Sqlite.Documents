@@ -1,6 +1,5 @@
 ﻿module BitBadger.Sqlite.FSharp.Documents
 
-open System.Data.SqlTypes
 open Microsoft.Data.Sqlite
 
 /// Configuration for document handling
@@ -48,7 +47,10 @@ module Configuration =
     /// Retrieve the currently configured data source
     let dbConn () =
         match connectionString with
-        | Some connStr -> new SqliteConnection(connStr)
+        | Some connStr ->
+            let conn = new SqliteConnection(connStr)
+            conn.Open()
+            conn
         | None -> invalidOp "Please provide a connection string before attempting data access"
     
     /// The serialized name of the ID field for documents
@@ -100,10 +102,9 @@ module Definition =
         }
     
     /// Create a document table
-    let ensureTable name = backgroundTask {
-        use! conn = newDbConn ()
-        do! WithConn.ensureTable name conn
-    }
+    let ensureTable name =
+        use conn = Configuration.dbConn ()
+        WithConn.ensureTable name conn
 
 /// Query construction functions
 [<RequireQualifiedAccess>]
@@ -301,7 +302,7 @@ module WithConn =
             return (result :?> int64) > 0
         }
     
-    /// Commands to determine if documents exist
+    /// Commands to retrieve documents
     [<RequireQualifiedAccess>]
     module Find =
         
@@ -413,145 +414,210 @@ module WithConn =
         }
 
 /// Insert a new document
-let insert<'TDoc> tableName (document: 'TDoc) = backgroundTask {
-    use! conn = newDbConn ()
-    do! WithConn.insert tableName document conn
-}
+let insert<'TDoc> tableName (document: 'TDoc) =
+    use conn = Configuration.dbConn ()
+    WithConn.insert tableName document conn
 
 /// Save a document, inserting it if it does not exist and updating it if it does (AKA "upsert")
-let save<'TDoc> tableName (document: 'TDoc) = backgroundTask {
-    use! conn = newDbConn ()
-    do! WithConn.save tableName document conn
-}
+let save<'TDoc> tableName (document: 'TDoc) =
+    use conn = Configuration.dbConn ()
+    WithConn.save tableName document conn
 
 /// Commands to count documents
 [<RequireQualifiedAccess>]
 module Count =
     
     /// Count all documents in a table
-    let all tableName = backgroundTask {
-        use! conn = newDbConn ()
-        return! WithConn.Count.all tableName conn
-    }
+    let all tableName =
+        use conn = Configuration.dbConn ()
+        WithConn.Count.all tableName conn
     
     /// Count matching documents using a text comparison on a JSON field
-    let byFieldEquals tableName fieldName (value: obj) = backgroundTask {
-        use! conn = newDbConn ()
-        return! WithConn.Count.byFieldEquals tableName fieldName value conn
-    }
+    let byFieldEquals tableName fieldName (value: obj) =
+        use conn = Configuration.dbConn ()
+        WithConn.Count.byFieldEquals tableName fieldName value conn
 
 /// Commands to determine if documents exist
 [<RequireQualifiedAccess>]
 module Exists =
 
     /// Determine if a document exists for the given ID
-    let byId tableName (docId: 'TKey) = backgroundTask {
-        use! conn = newDbConn ()
-        return! WithConn.Exists.byId tableName docId conn
-    }
+    let byId tableName (docId: 'TKey) =
+        use conn = Configuration.dbConn ()
+        WithConn.Exists.byId tableName docId conn
 
     /// Determine if a document exists using a text comparison on a JSON field
-    let byFieldEquals tableName fieldName (value: obj) = backgroundTask {
-        use! conn = newDbConn ()
-        return! WithConn.Exists.byFieldEquals tableName fieldName value conn
-    }
+    let byFieldEquals tableName fieldName (value: obj) =
+        use conn = Configuration.dbConn ()
+        WithConn.Exists.byFieldEquals tableName fieldName value conn
 
 /// Commands to determine if documents exist
 [<RequireQualifiedAccess>]
 module Find =
     
     /// Retrieve all documents in the given table
-    let all<'TDoc> tableName = backgroundTask {
-        use! conn = newDbConn ()
-        return! WithConn.Find.all<'TDoc> tableName conn
-    }
+    let all<'TDoc> tableName =
+        use conn = Configuration.dbConn ()
+        WithConn.Find.all<'TDoc> tableName conn
 
     /// Retrieve a document by its ID
-    let byId<'TKey, 'TDoc> tableName docId = backgroundTask {
-        use! conn = newDbConn ()
-        return! WithConn.Find.byId<'TKey, 'TDoc> tableName docId conn
-    }
+    let byId<'TKey, 'TDoc> tableName docId =
+        use conn = Configuration.dbConn ()
+        WithConn.Find.byId<'TKey, 'TDoc> tableName docId conn
 
     /// Execute a text comparison on a JSON field query
-    let byFieldEquals<'TDoc> tableName fieldName value = backgroundTask {
-        use! conn = newDbConn ()
-        return! WithConn.Find.byFieldEquals<'TDoc> tableName fieldName value conn
-    }
+    let byFieldEquals<'TDoc> tableName fieldName value =
+        use conn = Configuration.dbConn ()
+        WithConn.Find.byFieldEquals<'TDoc> tableName fieldName value conn
 
     /// Execute a text comparison on a JSON field query, returning only the first result
-    let firstByFieldEquals<'TDoc> tableName fieldName value = backgroundTask {
-        use! conn = newDbConn ()
-        return! WithConn.Find.firstByFieldEquals<'TDoc> tableName fieldName value conn
-    }
+    let firstByFieldEquals<'TDoc> tableName fieldName value =
+        use conn = Configuration.dbConn ()
+        WithConn.Find.firstByFieldEquals<'TDoc> tableName fieldName value conn
 
 /// Commands to update documents
 [<RequireQualifiedAccess>]
 module Update =
     
     /// Update an entire document
-    let full tableName (docId: 'TKey) (document: 'TDoc) = backgroundTask {
-        use! conn = newDbConn ()
-        do! WithConn.Update.full tableName docId document conn
-    }
+    let full tableName (docId: 'TKey) (document: 'TDoc) =
+        use conn = Configuration.dbConn ()
+        WithConn.Update.full tableName docId document conn
     
     /// Update an entire document
-    let fullFunc tableName (idFunc: 'TDoc -> 'TKey) (document: 'TDoc) = backgroundTask {
-        use! conn = newDbConn ()
-        do! WithConn.Update.fullFunc tableName idFunc document conn
-    }
+    let fullFunc tableName (idFunc: 'TDoc -> 'TKey) (document: 'TDoc) =
+        use conn = Configuration.dbConn ()
+        WithConn.Update.fullFunc tableName idFunc document conn
     
     /// Update a partial document
-    let partialById tableName (docId: 'TKey) (partial: 'TPatch) = backgroundTask {
-        use! conn = newDbConn ()
-        do! WithConn.Update.partialById tableName docId partial conn
-    }
+    let partialById tableName (docId: 'TKey) (partial: 'TPatch) =
+        use conn = Configuration.dbConn ()
+        WithConn.Update.partialById tableName docId partial conn
     
     /// Update partial documents using a text comparison on a JSON field in the WHERE clause
-    let partialByFieldEquals tableName fieldName (value: obj) (partial: 'TPatch) = backgroundTask {
-        use! conn = newDbConn ()
-        do! WithConn.Update.partialByFieldEquals tableName fieldName value partial conn
-    }
+    let partialByFieldEquals tableName fieldName (value: obj) (partial: 'TPatch) =
+        use conn = Configuration.dbConn ()
+        WithConn.Update.partialByFieldEquals tableName fieldName value partial conn
 
 /// Commands to delete documents
 [<RequireQualifiedAccess>]
 module Delete =
     
     /// Delete a document by its ID
-    let byId tableName (docId: 'TKey) = backgroundTask {
-        use! conn = newDbConn ()
-        do! WithConn.Delete.byId tableName docId conn
-    }
+    let byId tableName (docId: 'TKey) =
+        use conn = Configuration.dbConn ()
+        WithConn.Delete.byId tableName docId conn
 
     /// Delete documents by matching a text comparison on a JSON field
-    let byFieldEquals tableName fieldName (value: obj) = backgroundTask {
-        use! conn = newDbConn ()
-        do! WithConn.Delete.byFieldEquals tableName fieldName value conn
-    }
+    let byFieldEquals tableName fieldName (value: obj) =
+        use conn = Configuration.dbConn ()
+        WithConn.Delete.byFieldEquals tableName fieldName value conn
 
 /// Commands to execute custom SQL queries
 [<RequireQualifiedAccess>]
 module Custom =
 
     /// Execute a query that returns a list of results
-    let list<'TDoc> query parameters (mapFunc: SqliteDataReader -> 'TDoc) = backgroundTask {
-        use! conn = newDbConn ()
-        return! WithConn.Custom.list<'TDoc> query parameters mapFunc conn
-        }
+    let list<'TDoc> query parameters (mapFunc: SqliteDataReader -> 'TDoc) =
+        use conn = Configuration.dbConn ()
+        WithConn.Custom.list<'TDoc> query parameters mapFunc conn
 
     /// Execute a query that returns one or no results
-    let single<'TDoc> query parameters (mapFunc: SqliteDataReader -> 'TDoc) = backgroundTask {
-        use! conn = newDbConn ()
-        return! WithConn.Custom.single<'TDoc> query parameters mapFunc conn
-    }
+    let single<'TDoc> query parameters (mapFunc: SqliteDataReader -> 'TDoc) =
+        use conn = Configuration.dbConn ()
+        WithConn.Custom.single<'TDoc> query parameters mapFunc conn
 
     /// Execute a query that does not return a value
-    let nonQuery query parameters = backgroundTask {
-        use! conn = newDbConn ()
-        return! WithConn.Custom.nonQuery query parameters conn
-    }
+    let nonQuery query parameters =
+        use conn = Configuration.dbConn ()
+        WithConn.Custom.nonQuery query parameters conn
     
     /// Execute a query that returns a scalar value
-    let scalar<'T when 'T : struct> query parameters (mapFunc: SqliteDataReader -> 'T) = backgroundTask {
-        use! conn = newDbConn ()
-        return! WithConn.Custom.scalar<'T> query parameters mapFunc conn
-    }
+    let scalar<'T when 'T : struct> query parameters (mapFunc: SqliteDataReader -> 'T) =
+        use conn = Configuration.dbConn ()
+        WithConn.Custom.scalar<'T> query parameters mapFunc conn
+
+[<AutoOpen>]
+module Extensions =
+
+    type SqliteConnection with
+        
+        /// Insert a new document
+        member conn.insert<'TDoc> tableName (document: 'TDoc) =
+            WithConn.insert<'TDoc> tableName document conn
+
+        /// Save a document, inserting it if it does not exist and updating it if it does (AKA "upsert")
+        member conn.save<'TDoc> tableName (document: 'TDoc) =
+            WithConn.save tableName document conn
+
+        /// Count all documents in a table
+        member conn.countAll tableName =
+            WithConn.Count.all tableName conn
+        
+        /// Count matching documents using a text comparison on a JSON field
+        member conn.countByFieldEquals tableName fieldName (value: obj) =
+            WithConn.Count.byFieldEquals tableName fieldName value conn
+        
+        /// Determine if a document exists for the given ID
+        member conn.existsById tableName (docId: 'TKey) =
+            WithConn.Exists.byId tableName docId conn
+
+        /// Determine if a document exists using a text comparison on a JSON field
+        member conn.existsByFieldEquals tableName fieldName (value: obj) =
+            WithConn.Exists.byFieldEquals tableName fieldName value conn
+
+        /// Retrieve all documents in the given table
+        member conn.findAll<'TDoc> tableName =
+            WithConn.Find.all<'TDoc> tableName conn
+
+        /// Retrieve a document by its ID
+        member conn.findById<'TKey, 'TDoc> tableName (docId: 'TKey) =
+            WithConn.Find.byId<'TKey, 'TDoc> tableName docId conn
+
+        /// Execute a text comparison on a JSON field query
+        member conn.findByFieldEquals<'TDoc> tableName fieldName (value: obj) =
+            WithConn.Find.byFieldEquals<'TDoc> tableName fieldName value conn
+
+        /// Execute a text comparison on a JSON field query, returning only the first result
+        member conn.findFirstByFieldEquals<'TDoc> tableName fieldName (value: obj) =
+            WithConn.Find.firstByFieldEquals<'TDoc> tableName fieldName value conn
+
+        /// Update an entire document
+        member conn.updateFull tableName (docId: 'TKey) (document: 'TDoc) =
+            WithConn.Update.full tableName docId document conn
+        
+        /// Update an entire document
+        member conn.updateFullFunc tableName (idFunc: 'TDoc -> 'TKey) (document: 'TDoc) =
+            WithConn.Update.fullFunc tableName idFunc document conn
+        
+        /// Update a partial document
+        member conn.updatePartialById tableName (docId: 'TKey) (partial: 'TPatch) =
+            WithConn.Update.partialById tableName docId partial conn
+        
+        /// Update partial documents using a JSON containment query in the WHERE clause (@>)
+        member conn.updatePartialByFieldEquals tableName fieldName (value: obj) (partial: 'TPatch) =
+            WithConn.Update.partialByFieldEquals tableName fieldName value partial conn
+
+        /// Delete a document by its ID
+        member conn.deleteById tableName (docId: 'TKey) =
+            WithConn.Delete.byId tableName docId conn
+
+        /// Delete documents by matching a text comparison on a JSON field
+        member conn.deleteByFieldEquals tableName fieldName (value: obj) =
+            WithConn.Delete.byFieldEquals tableName fieldName value conn
+
+        /// Execute a query that returns a list of results
+        member conn.customList<'TDoc> query parameters mapFunc =
+            WithConn.Custom.list<'TDoc> query parameters mapFunc conn
+
+        /// Execute a query that returns one or no results
+        member conn.customSingle<'TDoc> query parameters mapFunc =
+            WithConn.Custom.single query parameters mapFunc conn
+        
+        /// Execute a query that does not return a value
+        member conn.customNonQuery query parameters =
+            WithConn.Custom.nonQuery query parameters conn
+
+        /// Execute a query that returns a scalar value
+        member conn.customScalar<'T when 'T: struct> query parameters mapFunc =
+            WithConn.Custom.scalar query parameters mapFunc conn
