@@ -7,6 +7,11 @@ open Microsoft.Data.Sqlite
 [<Extension>]
 type SqliteConnectionExtensions =
     
+    /// Create a document table
+    [<Extension>]
+    static member inline EnsureTable(conn: SqliteConnection, name: string) =
+        Definition.WithConn.EnsureTable(name, conn)
+
     /// Insert a new document
     [<Extension>]
     static member inline Insert<'TDoc>(conn: SqliteConnection, tableName: string, document: 'TDoc) =
@@ -22,11 +27,31 @@ type SqliteConnectionExtensions =
     static member inline CountAll(conn: SqliteConnection, tableName: string) =
         Document.WithConn.Count.All(tableName, conn)
     
-    /// Count matching documents using a text comparison on a JSON field
+    /// Count matching documents using a comparison on a JSON field
     [<Extension>]
-    static member inline CountByFieldEquals(conn: SqliteConnection, tableName: string, fieldName: string, value: obj) =
-        Document.WithConn.Count.ByFieldEquals(tableName, fieldName, value, conn)
+    static member inline CountByField(
+            conn: SqliteConnection,
+            tableName: string,
+            fieldName: string,
+            op: Op,
+            value: obj) =
+        Document.WithConn.Count.ByField(tableName, fieldName, op, value, conn)
 
+    /// Determine if a document exists for the given ID
+    [<Extension>]
+    static member inline ExistsById<'TKey>(conn: SqliteConnection, tableName: string, docId: 'TKey) =
+        Document.WithConn.Exists.ById(tableName, docId, conn)
+
+    /// Determine if a document exists using a comparison on a JSON field
+    [<Extension>]
+    static member inline ExistsByField(
+            conn: SqliteConnection,
+            tableName: string,
+            fieldName: string,
+            op: Op,
+            value: obj) =
+        Document.WithConn.Exists.ByField(tableName, fieldName, op, value, conn)
+    
     /// Retrieve all documents in the given table
     [<Extension>]
     static member inline FindAll<'TDoc>(conn: SqliteConnection, tableName: string) =
@@ -37,29 +62,28 @@ type SqliteConnectionExtensions =
     static member inline FindById<'TKey, 'TDoc when 'TDoc: null>(
             conn: SqliteConnection,
             tableName: string,
-            docId: 'TKey
-        ) =
+            docId: 'TKey) =
         Document.WithConn.Find.ById<'TKey, 'TDoc>(tableName, docId, conn)
 
-    /// Execute a text comparison on a JSON field query
+    /// Retrieve documents via a comparison on a JSON field
     [<Extension>]
-    static member inline FindByFieldEquals<'TDoc>(
+    static member inline FindByField<'TDoc>(
             conn: SqliteConnection,
             tableName: string,
             fieldName: string,
-            value: obj
-        ) =
-        Document.WithConn.Find.ByFieldEquals<'TDoc>(tableName, fieldName, value, conn)
+            op: Op,
+            value: obj) =
+        Document.WithConn.Find.ByField<'TDoc>(tableName, fieldName, op, value, conn)
 
-    /// Execute a text comparison on a JSON field query, returning only the first result
+    /// Retrieve documents via a comparison on a JSON field, returning only the first result
     [<Extension>]
-    static member inline FindFirstByFieldEquals<'TDoc when 'TDoc: null>(
+    static member inline FindFirstByField<'TDoc when 'TDoc: null>(
             conn: SqliteConnection,
             tableName: string,
             fieldName: string,
-            value: obj
-        ) =
-        Document.WithConn.Find.FirstByFieldEquals<'TDoc>(tableName, fieldName, value, conn)
+            op: Op,
+            value: obj) =
+        Document.WithConn.Find.FirstByField<'TDoc>(tableName, fieldName, op, value, conn)
 
     /// Update an entire document
     [<Extension>]
@@ -67,8 +91,7 @@ type SqliteConnectionExtensions =
             conn: SqliteConnection,
             tableName: string,
             docId: 'TKey,
-            document: 'TDoc
-        ) =
+            document: 'TDoc) =
         Document.WithConn.Update.Full(tableName, docId, document, conn)
     
     /// Update an entire document
@@ -77,8 +100,7 @@ type SqliteConnectionExtensions =
             conn: SqliteConnection,
             tableName: string,
             idFunc: System.Func<'TDoc, 'TKey>,
-            document: 'TDoc
-        ) =
+            document: 'TDoc) =
         Document.WithConn.Update.FullFunc(tableName, idFunc, document, conn)
     
     /// Update a partial document
@@ -87,30 +109,34 @@ type SqliteConnectionExtensions =
             conn: SqliteConnection,
             tableName: string,
             docId: 'TKey,
-            partial: 'TPatch
-        ) =
+            partial: 'TPatch) =
         Document.WithConn.Update.PartialById(tableName, docId, partial, conn)
     
-    /// Update partial documents using a text comparison on a JSON field
+    /// Update partial documents using a comparison on a JSON field
     [<Extension>]
-    static member inline UpdatePartialByFieldEquals<'TPatch>(
+    static member inline UpdatePartialByField<'TPatch>(
             conn: SqliteConnection,
             tableName: string,
             fieldName: string,
+            op: Op,
             value: obj,
-            partial: 'TPatch
-        ) =
-        Document.WithConn.Update.PartialByFieldEquals(tableName, fieldName, value, partial, conn)
+            partial: 'TPatch) =
+        Document.WithConn.Update.PartialByField(tableName, fieldName, op, value, partial, conn)
 
     /// Delete a document by its ID
     [<Extension>]
     static member inline DeleteById<'TKey>(conn: SqliteConnection, tableName: string, docId: 'TKey) =
         Document.WithConn.Delete.ById(tableName, docId, conn)
 
-    /// Delete documents by matching a text comparison on a JSON field
+    /// Delete documents by matching a comparison on a JSON field
     [<Extension>]
-    static member inline DeleteByFieldEquals(conn: SqliteConnection, tableName: string, fieldName: string, value: obj) =
-        Document.WithConn.Delete.ByFieldEquals(tableName, fieldName, value, conn)
+    static member inline DeleteByField(
+            conn: SqliteConnection,
+            tableName: string,
+            fieldName: string,
+            op: Op,
+            value: obj) =
+        Document.WithConn.Delete.ByField(tableName, fieldName, op, value, conn)
 
     /// Execute a query that returns a list of results
     [<Extension>]
@@ -118,8 +144,7 @@ type SqliteConnectionExtensions =
             conn: SqliteConnection,
             query: string,
             parameters: SqliteParameter seq,
-            mapFunc: System.Func<SqliteDataReader, 'TDoc>
-        ) =
+            mapFunc: System.Func<SqliteDataReader, 'TDoc>) =
         Document.WithConn.Custom.List<'TDoc>(query, parameters, mapFunc, conn)
 
     /// Execute a query that returns one or no results
@@ -128,8 +153,7 @@ type SqliteConnectionExtensions =
             conn: SqliteConnection,
             query: string,
             parameters: SqliteParameter seq,
-            mapFunc: System.Func<SqliteDataReader, 'TDoc>
-        ) =
+            mapFunc: System.Func<SqliteDataReader, 'TDoc>) =
         Document.WithConn.Custom.Single<'TDoc>(query, parameters, mapFunc, conn)
     
     /// Execute a query that does not return a value
@@ -143,6 +167,5 @@ type SqliteConnectionExtensions =
             conn: SqliteConnection,
             query: string,
             parameters: SqliteParameter seq,
-            mapFunc: System.Func<SqliteDataReader, 'T>
-        ) =
+            mapFunc: System.Func<SqliteDataReader, 'T>) =
         Document.WithConn.Custom.Scalar<'T>(query, parameters, mapFunc, conn)

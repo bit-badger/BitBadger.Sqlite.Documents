@@ -64,13 +64,6 @@ module Configuration =
     let idField () =
         idFieldValue
 
-/// Create a new SQLite connection; caller is responsible for disposing
-let internal newDbConn () = backgroundTask {
-    let conn = Configuration.dbConn ()
-    do! conn.OpenAsync()
-    return conn
-}
-
 /// Execute a non-query command
 let internal write (cmd: SqliteCommand) = backgroundTask {
     let! _ = cmd.ExecuteNonQueryAsync()
@@ -106,6 +99,25 @@ module Definition =
         use conn = Configuration.dbConn ()
         WithConn.ensureTable name conn
 
+
+/// The types of logical operations available for JSON fields
+[<Struct>]
+type Op =
+    /// Equals (=)
+    | EQ
+    /// Greater Than (>)
+    | GT
+    /// Greater Than or Equal To (>=)
+    | GE
+    /// Less Than (<)
+    | LT
+    /// Less Than or Equal To (<=)
+    | LE
+    
+    override this.ToString() =
+        match this with EQ -> "=" | GT -> ">" | GE -> ">=" | LT -> "<" | LE -> "<="
+
+
 /// Query construction functions
 [<RequireQualifiedAccess>]
 module Query =
@@ -114,13 +126,13 @@ module Query =
     let selectFromTable tableName =
         $"SELECT data FROM %s{tableName}"
     
+    /// Create a WHERE clause fragment to implement a comparison on a field in a JSON document
+    let whereByField fieldName (op: Op) paramName =
+        $"data ->> '%s{fieldName}' {op} %s{paramName}"
+    
     /// Create a WHERE clause fragment to implement an ID-based query
     let whereById paramName =
-        $"data ->> '{Configuration.idField ()}' = %s{paramName}"
-    
-    /// Create a WHERE clause fragment to implement a text equality check on a field in a JSON document
-    let whereFieldEquals fieldName paramName =
-        $"data ->> '%s{fieldName}' = %s{paramName}"
+        whereByField (Configuration.idField ()) EQ paramName
     
     /// Query to insert a document
     let insert tableName =
@@ -140,8 +152,8 @@ module Query =
             $"SELECT COUNT(*) AS it FROM %s{tableName}"
         
         /// Query to count matching documents using a text comparison on a JSON field
-        let byFieldEquals tableName fieldName =
-            $"""SELECT COUNT(*) AS it FROM %s{tableName} WHERE {whereFieldEquals fieldName "@field"}"""
+        let byField tableName fieldName op =
+            $"""SELECT COUNT(*) AS it FROM %s{tableName} WHERE {whereByField fieldName op "@field"}"""
         
     /// Queries for determining document existence
     module Exists =
@@ -150,9 +162,9 @@ module Query =
         let byId tableName =
             $"""SELECT EXISTS (SELECT 1 FROM %s{tableName} WHERE {whereById "@id"}) AS it"""
 
-        /// Query to determine if documents exist using a text comparison on a JSON field
-        let byFieldEquals tableName fieldName =
-            $"""SELECT EXISTS (SELECT 1 FROM %s{tableName} WHERE {whereFieldEquals fieldName "@field"}) AS it"""
+        /// Query to determine if documents exist using a comparison on a JSON field
+        let byField tableName fieldName op =
+            $"""SELECT EXISTS (SELECT 1 FROM %s{tableName} WHERE {whereByField fieldName op "@field"}) AS it"""
         
     /// Queries for retrieving documents
     module Find =
@@ -161,9 +173,9 @@ module Query =
         let byId tableName =
             $"""{selectFromTable tableName} WHERE {whereById "@id"}"""
         
-        /// Query to retrieve documents using a text comparison on a JSON field
-        let byFieldEquals tableName fieldName =
-            $"""{selectFromTable tableName} WHERE {whereFieldEquals fieldName "@field"}"""
+        /// Query to retrieve documents using a comparison on a JSON field
+        let byField tableName fieldName op =
+            $"""{selectFromTable tableName} WHERE {whereByField fieldName op "@field"}"""
         
     /// Queries to update documents
     module Update =
@@ -176,11 +188,11 @@ module Query =
         let partialById tableName =
             $"""UPDATE %s{tableName} SET data = json_patch(data, json(@data)) WHERE {whereById "@id"}"""
             
-        /// Query to update a partial document via a text comparison on a JSON field
-        let partialByFieldEquals tableName fieldName =
+        /// Query to update a partial document via a comparison on a JSON field
+        let partialByField tableName fieldName op =
             sprintf
                 "UPDATE %s SET data = json_patch(data, json(@data)) WHERE %s"
-                tableName (whereFieldEquals fieldName "@field")
+                tableName (whereByField fieldName op "@field")
     
     /// Queries to delete documents
     module Delete =
@@ -189,9 +201,9 @@ module Query =
         let byId tableName =
             $"""DELETE FROM %s{tableName} WHERE {whereById "@id"}"""
 
-        /// Query to delete documents using a text comparison on a JSON field
-        let byFieldEquals tableName fieldName =
-            $"""DELETE FROM %s{tableName} WHERE {whereFieldEquals fieldName "@field"}"""
+        /// Query to delete documents using a comparison on a JSON field
+        let byField tableName fieldName op =
+            $"""DELETE FROM %s{tableName} WHERE {whereByField fieldName op "@field"}"""
 
 
 /// Add a parameter to a SQLite command, ignoring the return value (can still be accessed on cmd via indexing)
@@ -271,10 +283,10 @@ module WithConn =
             return result :?> int64
         }
         
-        /// Count matching documents using a text comparison on a JSON field
-        let byFieldEquals tableName fieldName (value: obj) (conn: SqliteConnection) : Task<int64> = backgroundTask {
+        /// Count matching documents using a comparison on a JSON field
+        let byField tableName fieldName op (value: obj) (conn: SqliteConnection) : Task<int64> = backgroundTask {
             use cmd = conn.CreateCommand()
-            cmd.CommandText <- Query.Count.byFieldEquals tableName fieldName
+            cmd.CommandText <- Query.Count.byField tableName fieldName op
             addParam cmd "@field" value
             let! result = cmd.ExecuteScalarAsync()
             return result :?> int64
@@ -293,10 +305,10 @@ module WithConn =
             return (result :?> int64) > 0
         }
 
-        /// Determine if a document exists using a text comparison on a JSON field
-        let byFieldEquals tableName fieldName (value: obj) (conn: SqliteConnection) : Task<bool> = backgroundTask {
+        /// Determine if a document exists using a comparison on a JSON field
+        let byField tableName fieldName op (value: obj) (conn: SqliteConnection) : Task<bool> = backgroundTask {
             use cmd = conn.CreateCommand()
-            cmd.CommandText <- Query.Exists.byFieldEquals tableName fieldName
+            cmd.CommandText <- Query.Exists.byField tableName fieldName op
             addParam cmd "@field" value
             let! result = cmd.ExecuteScalarAsync()
             return (result :?> int64) > 0
@@ -321,18 +333,18 @@ module WithConn =
             return List.tryHead results
         }
 
-        /// Execute a text comparison on a JSON field query
-        let byFieldEquals<'TDoc> tableName fieldName (value: obj) (conn: SqliteConnection) : Task<'TDoc list> =
+        /// Retrieve documents via a comparison on a JSON field
+        let byField<'TDoc> tableName fieldName op (value: obj) (conn: SqliteConnection) : Task<'TDoc list> =
             use cmd = conn.CreateCommand()
-            cmd.CommandText <- Query.Find.byFieldEquals tableName fieldName
+            cmd.CommandText <- Query.Find.byField tableName fieldName op
             addParam cmd "@field" value
             toDocumentList<'TDoc> cmd
 
-        /// Execute a text comparison on a JSON field query, returning only the first result
-        let firstByFieldEquals<'TDoc> tableName fieldName (value: obj) (conn: SqliteConnection)
+        /// Retrieve documents via a comparison on a JSON field, returning only the first result
+        let firstByField<'TDoc> tableName fieldName op (value: obj) (conn: SqliteConnection)
                 : Task<'TDoc option> = backgroundTask {
             use cmd = conn.CreateCommand()
-            cmd.CommandText <- $"{Query.Find.byFieldEquals tableName fieldName} LIMIT 1"
+            cmd.CommandText <- $"{Query.Find.byField tableName fieldName op} LIMIT 1"
             addParam cmd "@field" value
             let! results = toDocumentList<'TDoc> cmd
             return List.tryHead results
@@ -354,10 +366,10 @@ module WithConn =
         let partialById tableName (docId: 'TKey) (partial: 'TPatch) conn =
             executeNonQueryWithId (Query.Update.partialById tableName) docId partial conn
         
-        /// Update partial documents using a JSON containment query in the WHERE clause (@>)
-        let partialByFieldEquals tableName fieldName (value: obj) (partial: 'TPatch) (conn: SqliteConnection) =
+        /// Update partial documents using a comparison on a JSON field
+        let partialByField tableName fieldName op (value: obj) (partial: 'TPatch) (conn: SqliteConnection) =
             use cmd = conn.CreateCommand()
-            cmd.CommandText <- Query.Update.partialByFieldEquals tableName fieldName
+            cmd.CommandText <- Query.Update.partialByField tableName fieldName op
             addParam cmd "@field" value
             addJsonParam cmd "@data" partial
             write cmd
@@ -370,10 +382,10 @@ module WithConn =
         let byId tableName (docId: 'TKey) conn =
             executeNonQueryWithId (Query.Delete.byId tableName) docId {||} conn
 
-        /// Delete documents by matching a text comparison on a JSON field
-        let byFieldEquals tableName fieldName (value: obj) (conn: SqliteConnection) =
+        /// Delete documents by matching a comparison on a JSON field
+        let byField tableName fieldName op (value: obj) (conn: SqliteConnection) =
             use cmd = conn.CreateCommand()
-            cmd.CommandText <- Query.Delete.byFieldEquals tableName fieldName
+            cmd.CommandText <- Query.Delete.byField tableName fieldName op
             addParam cmd "@field" value
             write cmd
 
@@ -432,10 +444,10 @@ module Count =
         use conn = Configuration.dbConn ()
         WithConn.Count.all tableName conn
     
-    /// Count matching documents using a text comparison on a JSON field
-    let byFieldEquals tableName fieldName (value: obj) =
+    /// Count matching documents using a comparison on a JSON field
+    let byField tableName fieldName op (value: obj) =
         use conn = Configuration.dbConn ()
-        WithConn.Count.byFieldEquals tableName fieldName value conn
+        WithConn.Count.byField tableName fieldName op value conn
 
 /// Commands to determine if documents exist
 [<RequireQualifiedAccess>]
@@ -446,10 +458,10 @@ module Exists =
         use conn = Configuration.dbConn ()
         WithConn.Exists.byId tableName docId conn
 
-    /// Determine if a document exists using a text comparison on a JSON field
-    let byFieldEquals tableName fieldName (value: obj) =
+    /// Determine if a document exists using a comparison on a JSON field
+    let byField tableName fieldName op (value: obj) =
         use conn = Configuration.dbConn ()
-        WithConn.Exists.byFieldEquals tableName fieldName value conn
+        WithConn.Exists.byField tableName fieldName op value conn
 
 /// Commands to determine if documents exist
 [<RequireQualifiedAccess>]
@@ -465,15 +477,15 @@ module Find =
         use conn = Configuration.dbConn ()
         WithConn.Find.byId<'TKey, 'TDoc> tableName docId conn
 
-    /// Execute a text comparison on a JSON field query
-    let byFieldEquals<'TDoc> tableName fieldName value =
+    /// Retrieve documents via a comparison on a JSON field
+    let byField<'TDoc> tableName fieldName op value =
         use conn = Configuration.dbConn ()
-        WithConn.Find.byFieldEquals<'TDoc> tableName fieldName value conn
+        WithConn.Find.byField<'TDoc> tableName fieldName op value conn
 
-    /// Execute a text comparison on a JSON field query, returning only the first result
-    let firstByFieldEquals<'TDoc> tableName fieldName value =
+    /// Retrieve documents via a comparison on a JSON field, returning only the first result
+    let firstByField<'TDoc> tableName fieldName op value =
         use conn = Configuration.dbConn ()
-        WithConn.Find.firstByFieldEquals<'TDoc> tableName fieldName value conn
+        WithConn.Find.firstByField<'TDoc> tableName fieldName op value conn
 
 /// Commands to update documents
 [<RequireQualifiedAccess>]
@@ -494,10 +506,10 @@ module Update =
         use conn = Configuration.dbConn ()
         WithConn.Update.partialById tableName docId partial conn
     
-    /// Update partial documents using a text comparison on a JSON field in the WHERE clause
-    let partialByFieldEquals tableName fieldName (value: obj) (partial: 'TPatch) =
+    /// Update partial documents using a comparison on a JSON field in the WHERE clause
+    let partialByField tableName fieldName op (value: obj) (partial: 'TPatch) =
         use conn = Configuration.dbConn ()
-        WithConn.Update.partialByFieldEquals tableName fieldName value partial conn
+        WithConn.Update.partialByField tableName fieldName op value partial conn
 
 /// Commands to delete documents
 [<RequireQualifiedAccess>]
@@ -508,10 +520,10 @@ module Delete =
         use conn = Configuration.dbConn ()
         WithConn.Delete.byId tableName docId conn
 
-    /// Delete documents by matching a text comparison on a JSON field
-    let byFieldEquals tableName fieldName (value: obj) =
+    /// Delete documents by matching a comparison on a JSON field
+    let byField tableName fieldName op (value: obj) =
         use conn = Configuration.dbConn ()
-        WithConn.Delete.byFieldEquals tableName fieldName value conn
+        WithConn.Delete.byField tableName fieldName op value conn
 
 /// Commands to execute custom SQL queries
 [<RequireQualifiedAccess>]
@@ -554,17 +566,17 @@ module Extensions =
         member conn.countAll tableName =
             WithConn.Count.all tableName conn
         
-        /// Count matching documents using a text comparison on a JSON field
-        member conn.countByFieldEquals tableName fieldName (value: obj) =
-            WithConn.Count.byFieldEquals tableName fieldName value conn
+        /// Count matching documents using a comparison on a JSON field
+        member conn.countByField tableName fieldName op (value: obj) =
+            WithConn.Count.byField tableName fieldName op value conn
         
         /// Determine if a document exists for the given ID
         member conn.existsById tableName (docId: 'TKey) =
             WithConn.Exists.byId tableName docId conn
 
-        /// Determine if a document exists using a text comparison on a JSON field
-        member conn.existsByFieldEquals tableName fieldName (value: obj) =
-            WithConn.Exists.byFieldEquals tableName fieldName value conn
+        /// Determine if a document exists using a comparison on a JSON field
+        member conn.existsByField tableName fieldName op (value: obj) =
+            WithConn.Exists.byField tableName fieldName op value conn
 
         /// Retrieve all documents in the given table
         member conn.findAll<'TDoc> tableName =
@@ -574,13 +586,13 @@ module Extensions =
         member conn.findById<'TKey, 'TDoc> tableName (docId: 'TKey) =
             WithConn.Find.byId<'TKey, 'TDoc> tableName docId conn
 
-        /// Execute a text comparison on a JSON field query
-        member conn.findByFieldEquals<'TDoc> tableName fieldName (value: obj) =
-            WithConn.Find.byFieldEquals<'TDoc> tableName fieldName value conn
+        /// Retrieve documents via a comparison on a JSON field
+        member conn.findByField<'TDoc> tableName fieldName op (value: obj) =
+            WithConn.Find.byField<'TDoc> tableName fieldName op value conn
 
-        /// Execute a text comparison on a JSON field query, returning only the first result
-        member conn.findFirstByFieldEquals<'TDoc> tableName fieldName (value: obj) =
-            WithConn.Find.firstByFieldEquals<'TDoc> tableName fieldName value conn
+        /// Retrieve documents via a comparison on a JSON field, returning only the first result
+        member conn.findFirstByField<'TDoc> tableName fieldName op (value: obj) =
+            WithConn.Find.firstByField<'TDoc> tableName fieldName op value conn
 
         /// Update an entire document
         member conn.updateFull tableName (docId: 'TKey) (document: 'TDoc) =
@@ -594,17 +606,17 @@ module Extensions =
         member conn.updatePartialById tableName (docId: 'TKey) (partial: 'TPatch) =
             WithConn.Update.partialById tableName docId partial conn
         
-        /// Update partial documents using a JSON containment query in the WHERE clause (@>)
-        member conn.updatePartialByFieldEquals tableName fieldName (value: obj) (partial: 'TPatch) =
-            WithConn.Update.partialByFieldEquals tableName fieldName value partial conn
+        /// Update partial documents using a comparison on a JSON field
+        member conn.updatePartialByField tableName fieldName op (value: obj) (partial: 'TPatch) =
+            WithConn.Update.partialByField tableName fieldName op value partial conn
 
         /// Delete a document by its ID
         member conn.deleteById tableName (docId: 'TKey) =
             WithConn.Delete.byId tableName docId conn
 
-        /// Delete documents by matching a text comparison on a JSON field
-        member conn.deleteByFieldEquals tableName fieldName (value: obj) =
-            WithConn.Delete.byFieldEquals tableName fieldName value conn
+        /// Delete documents by matching a comparison on a JSON field
+        member conn.deleteByField tableName fieldName op (value: obj) =
+            WithConn.Delete.byField tableName fieldName op value conn
 
         /// Execute a query that returns a list of results
         member conn.customList<'TDoc> query parameters mapFunc =

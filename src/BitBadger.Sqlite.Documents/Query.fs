@@ -8,13 +8,13 @@ module FS = BitBadger.Sqlite.FSharp.Documents
 let SelectFromTable(tableName: string) =
     FS.Query.selectFromTable tableName
 
+/// Create a WHERE clause fragment to implement a comparison on a field in a JSON document
+let WhereByField(fieldName: string, op: Op, paramName: string) =
+    FS.Query.whereByField fieldName (Op.convert op) paramName
+
 /// Create a WHERE clause fragment to implement an ID-based query
 let WhereById(paramName: string) =
     FS.Query.whereById paramName
-
-/// Create a WHERE clause fragment to implement a text equality check on a field in a JSON document
-let WhereFieldEquals(fieldName: string, paramName: string) =
-    FS.Query.whereFieldEquals fieldName paramName
 
 /// Query to insert a document
 let Insert(tableName: string) =
@@ -31,9 +31,9 @@ module Count =
     let All(tableName: string) =
         FS.Query.Count.all tableName
     
-    /// Query to count matching documents using a text comparison on a JSON field
-    let ByFieldEquals(tableName: string, fieldName: string) =
-        FS.Query.Count.byFieldEquals tableName fieldName
+    /// Query to count matching documents using a comparison on a JSON field
+    let ByField(tableName: string, fieldName: string, op: Op) =
+        FS.Query.Count.byField tableName fieldName (Op.convert op)
     
 /// Queries for determining document existence
 module Exists =
@@ -42,9 +42,9 @@ module Exists =
     let ById(tableName: string) =
         FS.Query.Exists.byId tableName
 
-    /// Query to determine if documents exist using a text comparison on a JSON field
-    let ByFieldEquals(tableName: string, fieldName: string) =
-        FS.Query.Exists.byFieldEquals tableName fieldName
+    /// Query to determine if documents exist using a comparison on a JSON field
+    let ByField(tableName: string, fieldName: string, op: Op) =
+        FS.Query.Exists.byField tableName fieldName (Op.convert op)
     
 /// Queries for retrieving documents
 module Find =
@@ -53,9 +53,9 @@ module Find =
     let ById(tableName: string) =
         FS.Query.Find.byId tableName
     
-    /// Query to retrieve documents using a text comparison on a JSON field
-    let ByFieldEquals(tableName: string, fieldName: string) =
-        FS.Query.Find.byFieldEquals tableName fieldName
+    /// Query to retrieve documents using a comparison on a JSON field
+    let ByField(tableName: string, fieldName: string, op: Op) =
+        FS.Query.Find.byField tableName fieldName (Op.convert op)
     
 /// Queries to update documents
 module Update =
@@ -68,9 +68,9 @@ module Update =
     let PartialById(tableName: string) =
         FS.Query.Update.partialById tableName
         
-    /// Query to update a partial document via a text comparison on a JSON field
-    let PartialByFieldEquals(tableName: string, fieldName: string) =
-        FS.Query.Update.partialByFieldEquals tableName fieldName
+    /// Query to update a partial document via a comparison on a JSON field
+    let PartialByField(tableName: string, fieldName: string, op: Op) =
+        FS.Query.Update.partialByField tableName fieldName (Op.convert op)
 
 /// Queries to delete documents
 module Delete =
@@ -79,6 +79,6 @@ module Delete =
     let ById(tableName: string) =
         FS.Query.Delete.byId tableName
 
-    /// Query to delete documents using a text comparison on a JSON field
-    let ByFieldEquals(tableName: string, fieldName: string) =
-        FS.Query.Delete.byFieldEquals tableName fieldName
+    /// Query to delete documents using a comparison on a JSON field
+    let ByField(tableName: string, fieldName: string, op: Op) =
+        FS.Query.Delete.byField tableName fieldName (Op.convert op)

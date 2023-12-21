@@ -3,6 +3,7 @@
   <ItemGroup>
     <Compile Include="Configuration.fs" />
     <Compile Include="Definition.fs" />
+    <Compile Include="Op.fs" />
     <Compile Include="Query.fs" />
     <Compile Include="Document.fs" />
     <Compile Include="Extensions.fs" />
