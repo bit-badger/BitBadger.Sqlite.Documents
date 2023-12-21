@@ -612,7 +612,7 @@ module Extensions =
 
         /// Execute a query that returns one or no results
         member conn.customSingle<'TDoc> query parameters mapFunc =
-            WithConn.Custom.single query parameters mapFunc conn
+            WithConn.Custom.single<'TDoc> query parameters mapFunc conn
         
         /// Execute a query that does not return a value
         member conn.customNonQuery query parameters =
@@ -620,4 +620,4 @@ module Extensions =
 
         /// Execute a query that returns a scalar value
         member conn.customScalar<'T when 'T: struct> query parameters mapFunc =
-            WithConn.Custom.scalar query parameters mapFunc conn
+            WithConn.Custom.scalar<'T> query parameters mapFunc conn

@@ -598,6 +598,426 @@ let integrationTests =
                 Expect.equal nbr 5 "The query should have returned the number 5"
             }
         ]
+        testList "Extensions" [
+            testList "insert" [
+                testTask "succeeds" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    let! before = conn.findAll<SubDocument> Db.tableName
+                    Expect.equal before [] "There should be no documents in the table"
+            
+                    let testDoc = { emptyDoc with Id = "turkey"; Sub = Some { Foo = "gobble"; Bar = "gobble" } }
+                    do! conn.insert Db.tableName testDoc
+                    let! after = conn.findAll<JsonDocument> Db.tableName
+                    Expect.equal after [ testDoc ] "There should have been one document inserted"
+                }
+                testTask "fails for duplicate key" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! conn.insert Db.tableName { emptyDoc with Id = "test" }
+                    Expect.throws
+                        (fun () ->
+                            conn.insert Db.tableName {emptyDoc with Id = "test" }
+                            |> Async.AwaitTask
+                            |> Async.RunSynchronously)
+                        "An exception should have been raised for duplicate document ID insert"
+                }
+            ]
+            testList "save" [
+                testTask "succeeds when a document is inserted" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    let! before = conn.findAll<JsonDocument> Db.tableName
+                    Expect.equal before [] "There should be no documents in the table"
+            
+                    let testDoc = { emptyDoc with Id = "test"; Sub = Some { Foo = "a"; Bar = "b" } }
+                    do! conn.save Db.tableName testDoc
+                    let! after = conn.findAll<JsonDocument> Db.tableName
+                    Expect.equal after [ testDoc ] "There should have been one document inserted"
+                }
+                testTask "succeeds when a document is updated" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    let testDoc = { emptyDoc with Id = "test"; Sub = Some { Foo = "a"; Bar = "b" } }
+                    do! conn.insert Db.tableName testDoc
+            
+                    let! before = conn.findById<string, JsonDocument> Db.tableName "test"
+                    if Option.isNone before then Expect.isTrue false "There should have been a document returned"
+                    Expect.equal before.Value testDoc "The document is not correct"
+            
+                    let upd8Doc = { testDoc with Sub = Some { Foo = "c"; Bar = "d" } }
+                    do! conn.save Db.tableName upd8Doc
+                    let! after = conn.findById<string, JsonDocument> Db.tableName "test"
+                    if Option.isNone after then
+                        Expect.isTrue false "There should have been a document returned post-update"
+                    Expect.equal after.Value upd8Doc "The updated document is not correct"
+                }
+            ]
+            testTask "countAll succeeds" {
+                use! db   = Db.buildDb ()
+                use  conn = Configuration.dbConn ()
+                do! loadDocs ()
+        
+                let! theCount = conn.countAll Db.tableName
+                Expect.equal theCount 5L "There should have been 5 matching documents"
+            }
+            testTask "countByFieldEquals succeeds" {
+                use! db   = Db.buildDb ()
+                use  conn = Configuration.dbConn ()
+                do! loadDocs ()
+        
+                let! theCount = conn.countByFieldEquals Db.tableName "Value" "purple"
+                Expect.equal theCount 2L "There should have been 2 matching documents"
+            }
+            testList "existsById" [
+                testTask "succeeds when a document exists" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    let! exists = conn.existsById Db.tableName "three"
+                    Expect.isTrue exists "There should have been an existing document"
+                }
+                testTask "succeeds when a document does not exist" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    let! exists = conn.existsById Db.tableName "seven"
+                    Expect.isFalse exists "There should not have been an existing document"
+                }
+            ]
+            testList "existsByFieldEquals" [
+                testTask "succeeds when documents exist" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    let! exists = conn.existsByFieldEquals Db.tableName "NumValue" 10
+                    Expect.isTrue exists "There should have been existing documents"
+                }
+                testTask "succeeds when no matching documents exist" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    let! exists = conn.existsByFieldEquals Db.tableName "Nothing" "none"
+                    Expect.isFalse exists "There should not have been any existing documents"
+                }
+            ]
+            testList "findAll" [
+                testTask "succeeds when there is data" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+        
+                    do! insert Db.tableName { Foo = "one"; Bar = "two" }
+                    do! insert Db.tableName { Foo = "three"; Bar = "four" }
+                    do! insert Db.tableName { Foo = "five"; Bar = "six" }
+        
+                    let! results = conn.findAll<SubDocument> Db.tableName
+                    let expected = [
+                        { Foo = "one"; Bar = "two" }
+                        { Foo = "three"; Bar = "four" }
+                        { Foo = "five"; Bar = "six" }
+                    ]
+                    Expect.equal results expected "There should have been 3 documents returned"
+                }
+                testTask "succeeds when there is no data" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    let! results = conn.findAll<SubDocument> Db.tableName
+                    Expect.equal results [] "There should have been no documents returned"
+                }
+            ]
+            testList "findById" [
+                testTask "succeeds when a document is found" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    let! doc = conn.findById<string, JsonDocument> Db.tableName "two"
+                    Expect.isTrue (Option.isSome doc) "There should have been a document returned"
+                    Expect.equal doc.Value.Id "two" "The incorrect document was returned"
+                }
+                testTask "succeeds when a document is not found" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    let! doc = conn.findById<string, JsonDocument> Db.tableName "three hundred eighty-seven"
+                    Expect.isFalse (Option.isSome doc) "There should not have been a document returned"
+                }
+            ]
+            testList "findByFieldEquals" [
+                testTask "succeeds when documents are found" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    let! docs = conn.findByFieldEquals<JsonDocument> Db.tableName "Sub.Foo" "green"
+                    Expect.equal (List.length docs) 2 "There should have been two documents returned"
+                }
+                testTask "succeeds when documents are not found" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    let! docs = conn.findByFieldEquals<JsonDocument> Db.tableName "Value" "mauve"
+                    Expect.isTrue (List.isEmpty docs) "There should have been no documents returned"
+                }
+            ]
+            testList "findFirstByFieldEquals" [
+                testTask "succeeds when a document is found" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    let! doc = conn.findFirstByFieldEquals<JsonDocument> Db.tableName "Value" "another"
+                    Expect.isTrue (Option.isSome doc) "There should have been a document returned"
+                    Expect.equal doc.Value.Id "two" "The incorrect document was returned"
+                }
+                testTask "succeeds when multiple documents are found" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    let! doc = conn.findFirstByFieldEquals<JsonDocument> Db.tableName "Sub.Foo" "green"
+                    Expect.isTrue (Option.isSome doc) "There should have been a document returned"
+                    Expect.contains [ "two"; "four" ] doc.Value.Id "An incorrect document was returned"
+                }
+                testTask "succeeds when a document is not found" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    let! doc = conn.findFirstByFieldEquals<JsonDocument> Db.tableName "Value" "absent"
+                    Expect.isFalse (Option.isSome doc) "There should not have been a document returned"
+                }
+            ]
+            testList "updateFull" [
+                testTask "succeeds when a document is updated" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    let testDoc = { emptyDoc with Id = "one"; Sub = Some { Foo = "blue"; Bar = "red" } }
+                    do! conn.updateFull Db.tableName "one" testDoc
+                    let! after = conn.findById<string, JsonDocument> Db.tableName "one"
+                    if Option.isNone after then
+                        Expect.isTrue false "There should have been a document returned post-update"
+                    Expect.equal after.Value testDoc "The updated document is not correct"
+                }
+                testTask "succeeds when no document is updated" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+        
+                    let! before = conn.findAll<JsonDocument> Db.tableName
+                    Expect.hasCountOf before 0u isTrue "There should have been no documents returned"
+                    
+                    // This not raising an exception is the test
+                    do! conn.updateFull
+                            Db.tableName
+                            "test"
+                            { emptyDoc with Id = "x"; Sub = Some { Foo = "blue"; Bar = "red" } }
+                }
+            ]
+            testList "updateFullFunc" [
+                testTask "succeeds when a document is updated" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    do! conn.updateFullFunc
+                            Db.tableName
+                            (_.Id)
+                            { Id = "one"; Value = "le un"; NumValue = 1; Sub = None }
+                    let! after = conn.findById<string, JsonDocument> Db.tableName "one"
+                    if Option.isNone after then
+                        Expect.isTrue false "There should have been a document returned post-update"
+                    Expect.equal
+                        after.Value
+                        { Id = "one"; Value = "le un"; NumValue = 1; Sub = None }
+                        "The updated document is not correct"
+                }
+                testTask "succeeds when no document is updated" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+        
+                    let! before = conn.findAll<JsonDocument> Db.tableName
+                    Expect.hasCountOf before 0u isTrue "There should have been no documents returned"
+                    
+                    // This not raising an exception is the test
+                    do! conn.updateFullFunc
+                            Db.tableName
+                            (_.Id)
+                            { Id = "one"; Value = "le un"; NumValue = 1; Sub = None }
+                }
+            ]
+            testList "updatePartialById" [
+                testTask "succeeds when a document is updated" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+                    
+                    do! conn.updatePartialById Db.tableName "one" {| NumValue = 44 |}
+                    let! after = conn.findById<string, JsonDocument> Db.tableName "one"
+                    if Option.isNone after then
+                        Expect.isTrue false "There should have been a document returned post-update"
+                    Expect.equal after.Value.NumValue 44 "The updated document is not correct"
+                }
+                testTask "succeeds when no document is updated" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+        
+                    let! before = conn.findAll<SubDocument> Db.tableName
+                    Expect.hasCountOf before 0u isTrue "There should have been no documents returned"
+                    
+                    // This not raising an exception is the test
+                    do! conn.updatePartialById Db.tableName "test" {| Foo = "green" |}
+                }
+            ]
+            testList "updatePartialByFieldEquals" [
+                testTask "succeeds when a document is updated" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+                    
+                    do! conn.updatePartialByFieldEquals Db.tableName "Value" "purple" {| NumValue = 77 |}
+                    let! after = conn.countByFieldEquals Db.tableName "NumValue" 77
+                    Expect.equal after 2L "There should have been 2 documents returned"
+                }
+                testTask "succeeds when no document is updated" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+        
+                    let! before = conn.findAll<SubDocument> Db.tableName
+                    Expect.hasCountOf before 0u isTrue "There should have been no documents returned"
+                    
+                    // This not raising an exception is the test
+                    do! conn.updatePartialByFieldEquals Db.tableName "Value" "burgundy" {| Foo = "green" |}
+                }
+            ]
+            testList "deleteById" [
+                testTask "succeeds when a document is deleted" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    do! conn.deleteById Db.tableName "four"
+                    let! remaining = conn.countAll Db.tableName
+                    Expect.equal remaining 4L "There should have been 4 documents remaining"
+                }
+                testTask "succeeds when a document is not deleted" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    do! conn.deleteById Db.tableName "thirty"
+                    let! remaining = conn.countAll Db.tableName
+                    Expect.equal remaining 5L "There should have been 5 documents remaining"
+                }
+            ]
+            testList "deleteByFieldEquals" [
+                testTask "succeeds when documents are deleted" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    do! conn.deleteByFieldEquals Db.tableName "Value" "purple"
+                    let! remaining = conn.countAll Db.tableName
+                    Expect.equal remaining 3L "There should have been 3 documents remaining"
+                }
+                testTask "succeeds when documents are not deleted" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    do! conn.deleteByFieldEquals Db.tableName "Value" "crimson"
+                    let! remaining = conn.countAll Db.tableName
+                    Expect.equal remaining 5L "There should have been 5 documents remaining"
+                }
+            ]
+            testList "customSingle" [
+                testTask "succeeds when a row is found" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    let! doc =
+                        conn.customSingle
+                            $"SELECT data FROM {Db.tableName} WHERE data ->> 'Id' = @id"
+                            [ SqliteParameter("@id", "one") ]
+                            fromData<JsonDocument>
+                    Expect.isSome doc "There should have been a document returned"
+                    Expect.equal doc.Value.Id "one" "The incorrect document was returned"
+                }
+                testTask "succeeds when a row is not found" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    let! doc =
+                        conn.customSingle
+                            $"SELECT data FROM {Db.tableName} WHERE data ->> 'Id' = @id"
+                            [ SqliteParameter("@id", "eighty") ]
+                            fromData<JsonDocument>
+                    Expect.isNone doc "There should not have been a document returned"
+                }
+            ]
+            testList "customList" [
+                testTask "succeeds when data is found" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    let! docs = conn.customList (Query.selectFromTable Db.tableName) [] fromData<JsonDocument>
+                    Expect.hasCountOf docs 5u isTrue "There should have been 5 documents returned"
+                }
+                testTask "succeeds when data is not found" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+        
+                    let! docs =
+                        conn.customList
+                            $"SELECT data FROM {Db.tableName} WHERE data ->> 'NumValue' > @value"
+                            [ SqliteParameter("@value", 100) ]
+                            fromData<JsonDocument>
+                    Expect.isEmpty docs "There should have been no documents returned"
+                }
+            ]
+            testList "customNonQuery" [
+                testTask "succeeds when operating on data" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+
+                    do! conn.customNonQuery $"DELETE FROM {Db.tableName}" []
+
+                    let! remaining = conn.countAll Db.tableName
+                    Expect.equal remaining 0L "There should be no documents remaining in the table"
+                }
+                testTask "succeeds when no data matches where clause" {
+                    use! db   = Db.buildDb ()
+                    use  conn = Configuration.dbConn ()
+                    do! loadDocs ()
+
+                    do! conn.customNonQuery
+                            $"DELETE FROM {Db.tableName} WHERE data ->> 'NumValue' > @value"
+                            [ SqliteParameter("@value", 100) ]
+
+                    let! remaining = conn.countAll Db.tableName
+                    Expect.equal remaining 5L "There should be 5 documents remaining in the table"
+                }
+            ]
+            testTask "customScalar succeeds" {
+                use! db   = Db.buildDb ()
+                use  conn = Configuration.dbConn ()
+        
+                let! nbr = conn.customScalar "SELECT 5 AS test_value" [] _.GetInt32(0)
+                Expect.equal nbr 5 "The query should have returned the number 5"
+            }
+        ]
         test "clean up database" {
             Configuration.useConnectionString "data source=:memory:"
         }
