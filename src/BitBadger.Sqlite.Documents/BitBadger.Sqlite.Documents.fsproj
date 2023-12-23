@@ -13,4 +13,10 @@
     <ProjectReference Include="..\BitBadger.Sqlite.FSharp.Documents\BitBadger.Sqlite.FSharp.Documents.fsproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>BitBadger.Sqlite.Documents.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

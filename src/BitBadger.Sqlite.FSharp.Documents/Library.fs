@@ -113,9 +113,11 @@ type Op =
     | LT
     /// Less Than or Equal To (<=)
     | LE
+    /// Not Equal to (<>)
+    | NE
     
     override this.ToString() =
-        match this with EQ -> "=" | GT -> ">" | GE -> ">=" | LT -> "<" | LE -> "<="
+        match this with EQ -> "=" | GT -> ">" | GE -> ">=" | LT -> "<" | LE -> "<=" | NE -> "<>"
 
 
 /// Query construction functions
@@ -553,6 +555,10 @@ module Custom =
 module Extensions =
 
     type SqliteConnection with
+        
+        /// Create a document table
+        member conn.ensureTable name =
+            Definition.WithConn.ensureTable name conn
         
         /// Insert a new document
         member conn.insert<'TDoc> tableName (document: 'TDoc) =

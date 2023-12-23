@@ -10,9 +10,11 @@ type Op =
     /// Greater Than or Equal To (>=)
     | GE = 2
     /// Less Than (<)
-    | LT = 4
+    | LT = 3
     /// Less Than or Equal To (<=)
-    | LE = 5
+    | LE = 4
+    /// Not Equal To (<>)
+    | NE = 5
 
 /// Convert a C# Op to an F# Op
 module internal Op =
@@ -27,4 +29,5 @@ module internal Op =
         | Op.GE -> FS.Op.GE
         | Op.LT -> FS.Op.LT
         | Op.LE -> FS.Op.LE
+        | Op.NE -> FS.Op.NE
         | it -> invalidArg (nameof op) $"The operation {it} is not defined"

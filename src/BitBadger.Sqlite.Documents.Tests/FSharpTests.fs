@@ -32,6 +32,26 @@ let unitTests =
                     "CREATE INDEX for key statement not constructed correctly"
             }
         ]
+        testList "Op" [
+            test "EQ succeeds" {
+                Expect.equal (string EQ) "=" "The equals operator was not correct"
+            }
+            test "GT succeeds" {
+                Expect.equal (string GT) ">" "The greater than operator was not correct"
+            }
+            test "GE succeeds" {
+                Expect.equal (string GE) ">=" "The greater than or equal to operator was not correct"
+            }
+            test "LT succeeds" {
+                Expect.equal (string LT) "<" "The less than operator was not correct"
+            }
+            test "LE succeeds" {
+                Expect.equal (string LE) "<=" "The less than or equal to operator was not correct"
+            }
+            test "NE succeeds" {
+                Expect.equal (string NE) "<>" "The not equal to operator was not correct"
+            }
+        ]
         testList "Query" [
             test "selectFromTable succeeds" {
                 Expect.equal
@@ -42,10 +62,10 @@ let unitTests =
             test "whereById succeeds" {
                 Expect.equal (Query.whereById "@id") "data ->> 'Id' = @id" "WHERE clause not correct"
             }
-            test "whereFieldEquals succeeds" {
+            test "whereByField succeeds" {
                 Expect.equal
-                    (Query.whereFieldEquals "theField" "@test")
-                    "data ->> 'theField' = @test"
+                    (Query.whereByField "theField" GT "@test")
+                    "data ->> 'theField' > @test"
                     "WHERE clause not correct"
             }
             test "insert succeeds" {
@@ -67,9 +87,9 @@ let unitTests =
                         $"SELECT COUNT(*) AS it FROM {Db.tableName}"
                         "Count query not correct"
                 }
-                test "byFieldEquals succeeds" {
+                test "byField succeeds" {
                     Expect.equal
-                        (Query.Count.byFieldEquals Db.tableName "thatField")
+                        (Query.Count.byField Db.tableName "thatField" EQ)
                         $"SELECT COUNT(*) AS it FROM {Db.tableName} WHERE data ->> 'thatField' = @field"
                         "JSON field text comparison count query not correct"
                 }
@@ -81,10 +101,10 @@ let unitTests =
                         $"SELECT EXISTS (SELECT 1 FROM {Db.tableName} WHERE data ->> 'Id' = @id) AS it"
                         "ID existence query not correct"
                 }
-                test "byFieldEquals succeeds" {
+                test "byField succeeds" {
                     Expect.equal
-                        (Query.Exists.byFieldEquals Db.tableName "Test")
-                        $"SELECT EXISTS (SELECT 1 FROM {Db.tableName} WHERE data ->> 'Test' = @field) AS it"
+                        (Query.Exists.byField Db.tableName "Test" LT)
+                        $"SELECT EXISTS (SELECT 1 FROM {Db.tableName} WHERE data ->> 'Test' < @field) AS it"
                         "JSON field text comparison exists query not correct"
                 }
             ]
@@ -95,10 +115,10 @@ let unitTests =
                         $"SELECT data FROM {Db.tableName} WHERE data ->> 'Id' = @id"
                         "SELECT by ID query not correct"
                 }
-                test "byFieldEquals succeeds" {
+                test "byField succeeds" {
                     Expect.equal
-                        (Query.Find.byFieldEquals Db.tableName "Golf")
-                        $"SELECT data FROM {Db.tableName} WHERE data ->> 'Golf' = @field"
+                        (Query.Find.byField Db.tableName "Golf" GE)
+                        $"SELECT data FROM {Db.tableName} WHERE data ->> 'Golf' >= @field"
                         "SELECT by JSON text comparison query not correct"
                 }
             ]
@@ -115,10 +135,10 @@ let unitTests =
                         $"UPDATE {Db.tableName} SET data = json_patch(data, json(@data)) WHERE data ->> 'Id' = @id"
                         "UPDATE partial by ID statement not correct"
                 }
-                test "partialByFieldEquals succeeds" {
+                test "partialByField succeeds" {
                     Expect.equal
-                        (Query.Update.partialByFieldEquals Db.tableName "Part")
-                        $"UPDATE {Db.tableName} SET data = json_patch(data, json(@data)) WHERE data ->> 'Part' = @field"
+                        (Query.Update.partialByField Db.tableName "Part" NE)
+                        $"UPDATE {Db.tableName} SET data = json_patch(data, json(@data)) WHERE data ->> 'Part' <> @field"
                         "UPDATE partial by JSON containment statement not correct"
                 }
             ]
@@ -129,9 +149,9 @@ let unitTests =
                         $"DELETE FROM {Db.tableName} WHERE data ->> 'Id' = @id"
                         "DELETE by ID query not correct"
                 }
-                test "byFieldEquals succeeds" {
+                test "byField succeeds" {
                     Expect.equal
-                        (Query.Delete.byFieldEquals Db.tableName "gone")
+                        (Query.Delete.byField Db.tableName "gone" EQ)
                         $"DELETE FROM {Db.tableName} WHERE data ->> 'gone' = @field"
                         "DELETE by JSON containment query not correct"
                 }
@@ -270,11 +290,11 @@ let integrationTests =
                 let! theCount = Count.all Db.tableName
                 Expect.equal theCount 5L "There should have been 5 matching documents"
             }
-            testTask "byFieldEquals succeeds" {
+            testTask "byField succeeds" {
                 use! db = Db.buildDb ()
                 do! loadDocs ()
         
-                let! theCount = Count.byFieldEquals Db.tableName "Value" "purple"
+                let! theCount = Count.byField Db.tableName "Value" EQ "purple"
                 Expect.equal theCount 2L "There should have been 2 matching documents"
             }
         ]
@@ -295,19 +315,19 @@ let integrationTests =
                     Expect.isFalse exists "There should not have been an existing document"
                 }
             ]
-            testList "byFieldEquals" [
+            testList "byField" [
                 testTask "succeeds when documents exist" {
                     use! db = Db.buildDb ()
                     do! loadDocs ()
         
-                    let! exists = Exists.byFieldEquals Db.tableName "NumValue" 10
+                    let! exists = Exists.byField Db.tableName "NumValue" EQ 10
                     Expect.isTrue exists "There should have been existing documents"
                 }
                 testTask "succeeds when no matching documents exist" {
                     use! db = Db.buildDb ()
                     do! loadDocs ()
         
-                    let! exists = Exists.byFieldEquals Db.tableName "Nothing" "none"
+                    let! exists = Exists.byField Db.tableName "Nothing" LT "none"
                     Expect.isFalse exists "There should not have been any existing documents"
                 }
             ]
@@ -352,28 +372,28 @@ let integrationTests =
                     Expect.isFalse (Option.isSome doc) "There should not have been a document returned"
                 }
             ]
-            testList "byFieldEquals" [
+            testList "byField" [
                 testTask "succeeds when documents are found" {
                     use! db = Db.buildDb ()
                     do! loadDocs ()
         
-                    let! docs = Find.byFieldEquals<JsonDocument> Db.tableName "Sub.Foo" "green"
+                    let! docs = Find.byField<JsonDocument> Db.tableName "NumValue" GT 15
                     Expect.equal (List.length docs) 2 "There should have been two documents returned"
                 }
                 testTask "succeeds when documents are not found" {
                     use! db = Db.buildDb ()
                     do! loadDocs ()
         
-                    let! docs = Find.byFieldEquals<JsonDocument> Db.tableName "Value" "mauve"
+                    let! docs = Find.byField<JsonDocument> Db.tableName "NumValue" GT 100
                     Expect.isTrue (List.isEmpty docs) "There should have been no documents returned"
                 }
             ]
-            testList "firstByFieldEquals" [
+            testList "firstByField" [
                 testTask "succeeds when a document is found" {
                     use! db = Db.buildDb ()
                     do! loadDocs ()
         
-                    let! doc = Find.firstByFieldEquals<JsonDocument> Db.tableName "Value" "another"
+                    let! doc = Find.firstByField<JsonDocument> Db.tableName "Value" EQ "another"
                     Expect.isTrue (Option.isSome doc) "There should have been a document returned"
                     Expect.equal doc.Value.Id "two" "The incorrect document was returned"
                 }
@@ -381,7 +401,7 @@ let integrationTests =
                     use! db = Db.buildDb ()
                     do! loadDocs ()
         
-                    let! doc = Find.firstByFieldEquals<JsonDocument> Db.tableName "Sub.Foo" "green"
+                    let! doc = Find.firstByField<JsonDocument> Db.tableName "Sub.Foo" EQ "green"
                     Expect.isTrue (Option.isSome doc) "There should have been a document returned"
                     Expect.contains [ "two"; "four" ] doc.Value.Id "An incorrect document was returned"
                 }
@@ -389,7 +409,7 @@ let integrationTests =
                     use! db = Db.buildDb ()
                     do! loadDocs ()
         
-                    let! doc = Find.firstByFieldEquals<JsonDocument> Db.tableName "Value" "absent"
+                    let! doc = Find.firstByField<JsonDocument> Db.tableName "Value" EQ "absent"
                     Expect.isFalse (Option.isSome doc) "There should not have been a document returned"
                 }
             ]
@@ -465,13 +485,13 @@ let integrationTests =
                     do! Update.partialById Db.tableName "test" {| Foo = "green" |}
                 }
             ]
-            testList "partialByFieldEquals" [
+            testList "partialByField" [
                 testTask "succeeds when a document is updated" {
                     use! db = Db.buildDb ()
                     do! loadDocs ()
                     
-                    do! Update.partialByFieldEquals Db.tableName "Value" "purple" {| NumValue = 77 |}
-                    let! after = Count.byFieldEquals Db.tableName "NumValue" 77
+                    do! Update.partialByField Db.tableName "Value" EQ "purple" {| NumValue = 77 |}
+                    let! after = Count.byField Db.tableName "NumValue" EQ 77
                     Expect.equal after 2L "There should have been 2 documents returned"
                 }
                 testTask "succeeds when no document is updated" {
@@ -481,7 +501,7 @@ let integrationTests =
                     Expect.hasCountOf before 0u isTrue "There should have been no documents returned"
                     
                     // This not raising an exception is the test
-                    do! Update.partialByFieldEquals Db.tableName "Value" "burgundy" {| Foo = "green" |}
+                    do! Update.partialByField Db.tableName "Value" EQ "burgundy" {| Foo = "green" |}
                 }
             ]
         ]
@@ -504,20 +524,20 @@ let integrationTests =
                     Expect.equal remaining 5L "There should have been 5 documents remaining"
                 }
             ]
-            testList "byFieldEquals" [
+            testList "byField" [
                 testTask "succeeds when documents are deleted" {
                     use! db = Db.buildDb ()
                     do! loadDocs ()
         
-                    do! Delete.byFieldEquals Db.tableName "Value" "purple"
+                    do! Delete.byField Db.tableName "Value" NE "purple"
                     let! remaining = Count.all Db.tableName
-                    Expect.equal remaining 3L "There should have been 3 documents remaining"
+                    Expect.equal remaining 2L "There should have been 2 documents remaining"
                 }
                 testTask "succeeds when documents are not deleted" {
                     use! db = Db.buildDb ()
                     do! loadDocs ()
         
-                    do! Delete.byFieldEquals Db.tableName "Value" "crimson"
+                    do! Delete.byField Db.tableName "Value" EQ "crimson"
                     let! remaining = Count.all Db.tableName
                     Expect.equal remaining 5L "There should have been 5 documents remaining"
                 }
@@ -599,6 +619,29 @@ let integrationTests =
             }
         ]
         testList "Extensions" [
+            testTask "ensureTable succeeds" {
+                use! db   = Db.buildDb ()
+                use  conn = Configuration.dbConn ()
+                let itExists (name: string) = task {
+                    let! result =
+                        conn.customScalar
+                            $"SELECT EXISTS (SELECT 1 FROM {Db.catalog} WHERE name = @name) AS it"
+                            [ SqliteParameter("@name", name) ]
+                            _.GetInt64(0)
+                    return result > 0
+                }
+                
+                let! exists     = itExists "ensured"
+                let! alsoExists = itExists "idx_ensured_key"
+                Expect.isFalse exists     "The table should not exist already"
+                Expect.isFalse alsoExists "The key index should not exist already"
+        
+                do! conn.ensureTable "ensured"
+                let! exists'     = itExists "ensured"
+                let! alsoExists' = itExists "idx_ensured_key"
+                Expect.isTrue exists'    "The table should now exist"
+                Expect.isTrue alsoExists' "The key index should now exist"
+            }
             testList "insert" [
                 testTask "succeeds" {
                     use! db   = Db.buildDb ()
@@ -661,12 +704,12 @@ let integrationTests =
                 let! theCount = conn.countAll Db.tableName
                 Expect.equal theCount 5L "There should have been 5 matching documents"
             }
-            testTask "countByFieldEquals succeeds" {
+            testTask "countByField succeeds" {
                 use! db   = Db.buildDb ()
                 use  conn = Configuration.dbConn ()
                 do! loadDocs ()
         
-                let! theCount = conn.countByFieldEquals Db.tableName "Value" "purple"
+                let! theCount = conn.countByField Db.tableName "Value" EQ "purple"
                 Expect.equal theCount 2L "There should have been 2 matching documents"
             }
             testList "existsById" [
@@ -687,13 +730,13 @@ let integrationTests =
                     Expect.isFalse exists "There should not have been an existing document"
                 }
             ]
-            testList "existsByFieldEquals" [
+            testList "existsByField" [
                 testTask "succeeds when documents exist" {
                     use! db   = Db.buildDb ()
                     use  conn = Configuration.dbConn ()
                     do! loadDocs ()
         
-                    let! exists = conn.existsByFieldEquals Db.tableName "NumValue" 10
+                    let! exists = conn.existsByField Db.tableName "NumValue" EQ 10
                     Expect.isTrue exists "There should have been existing documents"
                 }
                 testTask "succeeds when no matching documents exist" {
@@ -701,7 +744,7 @@ let integrationTests =
                     use  conn = Configuration.dbConn ()
                     do! loadDocs ()
         
-                    let! exists = conn.existsByFieldEquals Db.tableName "Nothing" "none"
+                    let! exists = conn.existsByField Db.tableName "Nothing" EQ "none"
                     Expect.isFalse exists "There should not have been any existing documents"
                 }
             ]
@@ -748,13 +791,13 @@ let integrationTests =
                     Expect.isFalse (Option.isSome doc) "There should not have been a document returned"
                 }
             ]
-            testList "findByFieldEquals" [
+            testList "findByField" [
                 testTask "succeeds when documents are found" {
                     use! db   = Db.buildDb ()
                     use  conn = Configuration.dbConn ()
                     do! loadDocs ()
         
-                    let! docs = conn.findByFieldEquals<JsonDocument> Db.tableName "Sub.Foo" "green"
+                    let! docs = conn.findByField<JsonDocument> Db.tableName "Sub.Foo" EQ "green"
                     Expect.equal (List.length docs) 2 "There should have been two documents returned"
                 }
                 testTask "succeeds when documents are not found" {
@@ -762,17 +805,17 @@ let integrationTests =
                     use  conn = Configuration.dbConn ()
                     do! loadDocs ()
         
-                    let! docs = conn.findByFieldEquals<JsonDocument> Db.tableName "Value" "mauve"
+                    let! docs = conn.findByField<JsonDocument> Db.tableName "Value" EQ "mauve"
                     Expect.isTrue (List.isEmpty docs) "There should have been no documents returned"
                 }
             ]
-            testList "findFirstByFieldEquals" [
+            testList "findFirstByField" [
                 testTask "succeeds when a document is found" {
                     use! db   = Db.buildDb ()
                     use  conn = Configuration.dbConn ()
                     do! loadDocs ()
         
-                    let! doc = conn.findFirstByFieldEquals<JsonDocument> Db.tableName "Value" "another"
+                    let! doc = conn.findFirstByField<JsonDocument> Db.tableName "Value" EQ "another"
                     Expect.isTrue (Option.isSome doc) "There should have been a document returned"
                     Expect.equal doc.Value.Id "two" "The incorrect document was returned"
                 }
@@ -781,7 +824,7 @@ let integrationTests =
                     use  conn = Configuration.dbConn ()
                     do! loadDocs ()
         
-                    let! doc = conn.findFirstByFieldEquals<JsonDocument> Db.tableName "Sub.Foo" "green"
+                    let! doc = conn.findFirstByField<JsonDocument> Db.tableName "Sub.Foo" EQ "green"
                     Expect.isTrue (Option.isSome doc) "There should have been a document returned"
                     Expect.contains [ "two"; "four" ] doc.Value.Id "An incorrect document was returned"
                 }
@@ -790,7 +833,7 @@ let integrationTests =
                     use  conn = Configuration.dbConn ()
                     do! loadDocs ()
         
-                    let! doc = conn.findFirstByFieldEquals<JsonDocument> Db.tableName "Value" "absent"
+                    let! doc = conn.findFirstByField<JsonDocument> Db.tableName "Value" EQ "absent"
                     Expect.isFalse (Option.isSome doc) "There should not have been a document returned"
                 }
             ]
@@ -876,14 +919,14 @@ let integrationTests =
                     do! conn.updatePartialById Db.tableName "test" {| Foo = "green" |}
                 }
             ]
-            testList "updatePartialByFieldEquals" [
+            testList "updatePartialByField" [
                 testTask "succeeds when a document is updated" {
                     use! db   = Db.buildDb ()
                     use  conn = Configuration.dbConn ()
                     do! loadDocs ()
                     
-                    do! conn.updatePartialByFieldEquals Db.tableName "Value" "purple" {| NumValue = 77 |}
-                    let! after = conn.countByFieldEquals Db.tableName "NumValue" 77
+                    do! conn.updatePartialByField Db.tableName "Value" EQ "purple" {| NumValue = 77 |}
+                    let! after = conn.countByField Db.tableName "NumValue" EQ 77
                     Expect.equal after 2L "There should have been 2 documents returned"
                 }
                 testTask "succeeds when no document is updated" {
@@ -894,7 +937,7 @@ let integrationTests =
                     Expect.hasCountOf before 0u isTrue "There should have been no documents returned"
                     
                     // This not raising an exception is the test
-                    do! conn.updatePartialByFieldEquals Db.tableName "Value" "burgundy" {| Foo = "green" |}
+                    do! conn.updatePartialByField Db.tableName "Value" EQ "burgundy" {| Foo = "green" |}
                 }
             ]
             testList "deleteById" [
@@ -917,22 +960,22 @@ let integrationTests =
                     Expect.equal remaining 5L "There should have been 5 documents remaining"
                 }
             ]
-            testList "deleteByFieldEquals" [
+            testList "deleteByField" [
                 testTask "succeeds when documents are deleted" {
                     use! db   = Db.buildDb ()
                     use  conn = Configuration.dbConn ()
                     do! loadDocs ()
         
-                    do! conn.deleteByFieldEquals Db.tableName "Value" "purple"
+                    do! conn.deleteByField Db.tableName "Value" NE "purple"
                     let! remaining = conn.countAll Db.tableName
-                    Expect.equal remaining 3L "There should have been 3 documents remaining"
+                    Expect.equal remaining 2L "There should have been 2 documents remaining"
                 }
                 testTask "succeeds when documents are not deleted" {
                     use! db   = Db.buildDb ()
                     use  conn = Configuration.dbConn ()
                     do! loadDocs ()
         
-                    do! conn.deleteByFieldEquals Db.tableName "Value" "crimson"
+                    do! conn.deleteByField Db.tableName "Value" EQ "crimson"
                     let! remaining = conn.countAll Db.tableName
                     Expect.equal remaining 5L "There should have been 5 documents remaining"
                 }
