@@ -15,6 +15,10 @@ type Op =
     | LE = 4
     /// Not Equal To (<>)
     | NE = 5
+    /// Exists (IS NOT NULL)
+    | EX = 6
+    /// Does Not Exist (IS NULL)
+    | NEX = 7
 
 /// Convert a C# Op to an F# Op
 module internal Op =
@@ -30,4 +34,6 @@ module internal Op =
         | Op.LT -> FS.Op.LT
         | Op.LE -> FS.Op.LE
         | Op.NE -> FS.Op.NE
+        | Op.EX -> FS.Op.EX
+        | Op.NEX -> FS.Op.NEX
         | it -> invalidArg (nameof op) $"The operation {it} is not defined"

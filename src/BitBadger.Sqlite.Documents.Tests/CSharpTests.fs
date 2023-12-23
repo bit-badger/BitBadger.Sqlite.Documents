@@ -52,9 +52,15 @@ let unitTests =
             test "succeeds for NE" {
                 Expect.equal (Op.convert Op.NE) FS.Op.NE "The not equal to operator was not correct"
             }
+            test "succeeds for EX" {
+                Expect.equal (Op.convert Op.EX) FS.Op.EX """The "exists" operator ws not correct"""
+            }
+            test "succeeds for NEX" {
+                Expect.equal (Op.convert Op.NEX) FS.Op.NEX """The "not exists" operator ws not correct"""
+            }
             test "fails for invalid operator" {
                 Expect.throws
-                    (fun () -> Op.convert (box 6 :?> Op) |> ignore)
+                    (fun () -> Op.convert (box 8 :?> Op) |> ignore)
                     "Conversion to an invalid value should have thrown an exception"
             }
         ]
@@ -68,12 +74,20 @@ let unitTests =
             test "WhereById succeeds" {
                 Expect.equal (Query.WhereById "@id") "data ->> 'Id' = @id" "WHERE clause not correct"
             }
-            test "WhereByField succeeds" {
-                Expect.equal
-                    (Query.WhereByField("theField", Op.EQ, "@test"))
-                    "data ->> 'theField' = @test"
-                    "WHERE clause not correct"
-            }
+            testList "WhereByField" [
+                test "succeeds when a logical operator is passed" {
+                    Expect.equal
+                        (Query.WhereByField("theField", Op.EQ, "@test"))
+                        "data ->> 'theField' = @test"
+                        "WHERE clause not correct"
+                }
+                test "succeeds when an existence operator is passed" {
+                    Expect.equal
+                        (Query.WhereByField("something", Op.EX, ""))
+                        "data ->> 'something' IS NOT NULL"
+                        "WHERE clause not correct"
+                }
+            ]
             test "Insert succeeds" {
                 Expect.equal
                     (Query.Insert Db.tableName)

@@ -115,9 +115,21 @@ type Op =
     | LE
     /// Not Equal to (<>)
     | NE
+    /// Exists (IS NOT NULL)
+    | EX
+    /// Does Not Exist (IS NULL)
+    | NEX
     
     override this.ToString() =
-        match this with EQ -> "=" | GT -> ">" | GE -> ">=" | LT -> "<" | LE -> "<=" | NE -> "<>"
+        match this with
+        | EQ -> "="
+        | GT -> ">"
+        | GE -> ">="
+        | LT -> "<"
+        | LE -> "<="
+        | NE -> "<>"
+        | EX -> "IS NOT NULL"
+        | NEX -> "IS NULL"
 
 
 /// Query construction functions
@@ -130,7 +142,11 @@ module Query =
     
     /// Create a WHERE clause fragment to implement a comparison on a field in a JSON document
     let whereByField fieldName (op: Op) paramName =
-        $"data ->> '%s{fieldName}' {op} %s{paramName}"
+        let theRest =
+            match op with
+            | EX | NEX -> string op
+            | _ -> $"{op} %s{paramName}"
+        $"data ->> '%s{fieldName}' {theRest}"
     
     /// Create a WHERE clause fragment to implement an ID-based query
     let whereById paramName =

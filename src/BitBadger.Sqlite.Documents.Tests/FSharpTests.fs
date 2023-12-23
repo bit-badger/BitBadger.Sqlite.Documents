@@ -51,6 +51,12 @@ let unitTests =
             test "NE succeeds" {
                 Expect.equal (string NE) "<>" "The not equal to operator was not correct"
             }
+            test "EX succeeds" {
+                Expect.equal (string EX) "IS NOT NULL" """The "exists" operator ws not correct"""
+            }
+            test "NEX succeeds" {
+                Expect.equal (string NEX) "IS NULL" """The "not exists" operator ws not correct"""
+            }
         ]
         testList "Query" [
             test "selectFromTable succeeds" {
@@ -62,12 +68,20 @@ let unitTests =
             test "whereById succeeds" {
                 Expect.equal (Query.whereById "@id") "data ->> 'Id' = @id" "WHERE clause not correct"
             }
-            test "whereByField succeeds" {
-                Expect.equal
-                    (Query.whereByField "theField" GT "@test")
-                    "data ->> 'theField' > @test"
-                    "WHERE clause not correct"
-            }
+            testList "whereByField" [
+                test "succeeds when a logical operator is passed" {
+                    Expect.equal
+                        (Query.whereByField "theField" GT "@test")
+                        "data ->> 'theField' > @test"
+                        "WHERE clause not correct"
+                }
+                test "succeeds when an existence operator is passed" {
+                    Expect.equal
+                        (Query.whereByField "thatField" NEX "")
+                        "data ->> 'thatField' IS NULL"
+                        "WHERE clause not correct"
+                }
+            ]
             test "insert succeeds" {
                 Expect.equal
                     (Query.insert Db.tableName)
